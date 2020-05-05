@@ -6,14 +6,20 @@ import pyaudio
 import numpy
 import threading
 from PIL import ImageTk, Image
-
+import base64
+from Cryptodome.Cipher import AES
 
 
 class Client:
 
     def __init__(self):
-        self.server = '185.195.25.113', 4999
-        self.key = 'hi'
+        self.config=open('config.yml','r').read().split('\n')
+
+        self.server = self.config[0].split('=')[1], int(self.config[1].split('=')[1])
+        self.secret_key=bytes(self.config[2].split('=')[1],'utf-8')
+        print(self.server)
+        print(self.secret_key)
+        self.cipher = AES.new(self.secret_key, AES.MODE_ECB)  # never use ECB in strong systems obviously
         numpy.set_printoptions(threshold=sys.maxsize)
         self.chunk = 1024
         self.FORMAT = pyaudio.paInt16
@@ -57,7 +63,7 @@ class Client:
     def create_room(self):  # new window definition
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # IP_V4 и UDP протокол
-        sock.bind(('0.0.0.0', 4999))
+        sock.bind(('0.0.0.0', int(self.config[1].split('=')[1])))
 
         def lister():
 
@@ -69,7 +75,7 @@ class Client:
                     sock.close()
                     return
 
-        server = '185.195.25.113', 4999
+        server = self.config[0].split('=')[1], int(self.config[1].split('=')[1])
 
         threading.Thread(target=lister, args=()).start()
         sock.sendto(b'create_room', server)
@@ -126,6 +132,9 @@ class Client:
         return data
 
 
+
+
+
     def found_server(self, message):
         inputValue = message.get()
         inputValue=inputValue.encode('utf-8')
@@ -157,8 +166,13 @@ class Client:
             decoded = numpy.fromstring(mensahe, dtype=numpy.int16)
             decoded=self.refactor(decoded)
             decoded=decoded.tobytes()
-            mensahe=decoded
 
+            mensahe=decoded
+            print("NO CRYPT DATA: ",mensahe)
+            cipher = AES.new(self.secret_key, AES.MODE_ECB)  # never use ECB in strong systems obviously
+            mensahe = base64.b64encode(cipher.encrypt(mensahe))
+            print("CRYPT DATA: ",mensahe)
+            print()
             sock.sendto(mensahe, (self.server[0],int(port)))
 
 
@@ -167,7 +181,7 @@ class Client:
             while True:
                 data = sock.recv(4096)
                 if data:
-
+                    data = self.cipher.decrypt(base64.b64decode(data))
                   #  decoded = numpy.fromstring(data, dtype=numpy.int16)
                    # data = self.decryption(self.key, decoded)
                     self.stream_write.write(data)
